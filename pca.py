@@ -12,6 +12,7 @@ def plot_descriptors(dataset_name, descriptors, pca_matrix, savefig_path=None, a
     assert pca_matrix.is_trained
     if not ax:
         fig, ax = plt.subplots()
+        fig.suptitle(f"Model: {savefig_path.parents[1].stem}")
 
     transformed = pca_matrix.apply(descriptors)
     ax.hexbin(transformed[:, 0], transformed[:, 1], bins='log', label=dataset_name, **plot_kwargs)
@@ -45,9 +46,28 @@ def main(args):
     assert pca_matrix.is_trained
     faiss.write_VectorTransform(pca_matrix, f"{str(work_dir)}/pca.pca") # faiss c++ code doesn't like pathlib.Path
     
-    for dataset_name, descriptors in dataset_to_descriptors.items():
-        # fig, ax = plt.subplots()
-        plot_descriptors(dataset_name, descriptors, pca_matrix, savefig_path=work_dir/f'{dataset_name}.png')
+    fig_s, ax_s = plt.subplots(2, sharex=True, sharey=True)
+    fig_c, ax_c = plt.subplots()
+    # fig, ax = plt.subplots()
+    cmaps = ['Reds', 'Blues']
+    plot_dir = work_dir/'plots'; plot_dir.mkdir(exist_ok=True)
+    for i, (dataset_name, descriptors) in enumerate(dataset_to_descriptors.items()):
+        plot_descriptors(dataset_name, descriptors, pca_matrix, savefig_path=plot_dir/f'{dataset_name}.png')
+        plot_descriptors(dataset_name, descriptors, pca_matrix, ax=ax_s[i],)
+        plot_descriptors(dataset_name, descriptors, pca_matrix, ax=ax_c, plot_kwargs={'cmap':cmaps[i], 'alpha':0.5,})
+        
+
+    # leg.legend_handles[0].set_edgecolor('black')
+    ax_c.set_title(None)
+    ax_c.legend()
+    leg = ax_c.get_legend()
+    leg.legend_handles[0].set_facecolor('red')
+    leg.legend_handles[1].set_facecolor('blue')
+    fig_s.suptitle(f"Model: {work_dir.stem}")
+    fig_s.savefig(plot_dir/'seperate.png')
+    fig_c.suptitle(f"Model: {work_dir.stem}")
+    fig_c.savefig(plot_dir/'combined.png')
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
