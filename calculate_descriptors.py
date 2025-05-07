@@ -280,9 +280,7 @@ def get_descriptors(batch, output, model, num_layers=-1, invariants_only=True):
 def main(args):
     device = 'cuda'
     work_dir = Path(args.work_dir)
-    print(f'{work_dir=}')
     models = list(work_dir.glob('*.model'))
-    print(models)
     assert len(models) == 1
     model = mace_mp(models[0], device=device, return_raw_model=True)
     model = run_e3nn_to_cueq(model)
@@ -316,6 +314,7 @@ def main(args):
     )
 
 if __name__ == '__main__':
+    print(f'Starting descriptor calculation in {args.work_dir} with {args.dataset} dataset.')
     args = parser.parse_args()
     main(args)
     print('SUCCESS')

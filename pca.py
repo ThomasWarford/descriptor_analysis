@@ -71,5 +71,6 @@ def main(args):
 
 if __name__ == "__main__":
     args = parser.parse_args()
+    print(f'Starting PCA in: {args.work_dir}')
     main(args)
     print('SUCCESS')
