@@ -15,14 +15,14 @@ import argparse
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("work_dir", help="directory containing .model file. Directory name should correspond with model.",
-                    type=str)
-parser.add_argument("site_info_dir", help="directory containing site information",
-                    type=str, optional=True, default=None)
-parser.add_argument("dataset", help="choice of dataset",
-                    choices=['mptrj', 'salex',], type=str)
-parser.add_argument("calculate_residuals", help="save the residual error for the config",
-                    type=bool)
+parser.add_argument("--work_dir", help="directory containing .model file. Directory name should correspond with model.",
+                    type=str, required=True)
+parser.add_argument("--site_info_dir", help="directory containing site information",
+                    type=str, default=None, required=False,)
+parser.add_argument("--dataset", help="choice of dataset",
+                    choices=['mptrj', 'salex',], type=str, required=True)
+parser.add_argument("--calculate_residuals", help="save the residual error for the config",
+                    type=bool, required=False,)
 
 DATASETS = {
     'mptrj': '/lustre/fswork/projects/rech/gax/ums98bp/gga-ggapu/mptrj-all.xyz',
@@ -195,7 +195,7 @@ def save_descriptors(
     descriptor_path: Path,
     device: str,
     site_info_path=None,
-    residual_path=None
+    site_residual_path=None
     ):
     torch_tools.set_default_dtype("float64")
 
@@ -278,20 +278,21 @@ def get_descriptors(batch, output, model, num_layers=-1, invariants_only=True):
 
 def main(args):
     device = 'cuda'
-    path = Path(DATASETS[args.dataset])
     work_dir = Path(args.work_dir)
-    models = work_dir.glob('*.model')
+    print(work_dir)
+    models = list(work_dir.glob('*.model'))
     assert len(models) == 1
     model = mace_mp(models[0], device=device, return_raw_model=True)
     model = run_e3nn_to_cueq(model)
     model.to(device)
     z_table = utils.AtomicNumberTable([int(z) for z in model.atomic_numbers])
 
-    if path[-3:] == 'xyz':
-        ds = LazyIdentifiedXYZDataset(path, z_table=z_table, cutoff=float(model.r_max))
+    dataset_path = DATASETS[args.dataset]
+    if dataset_path[-3] == 'xyz':
+        ds = LazyIdentifiedXYZDataset(dataset_path, z_table=z_table, cutoff=float(model.r_max))
     else:
         ds = IdentifiedLMDBDataset(
-            path,
+            dataset_path,
             float(model.r_max),
             z_table
         )
@@ -306,10 +307,10 @@ def main(args):
     save_descriptors(
         model,
         dataloader,
-        descriptor_path=work_dir/f'{args.dataset}_descriptors.npy',
+        descriptor_path=work_dir/f'{args.dataset}.descriptors.npy',
         device=device,
-        site_info_path=(args.site_info_dir/f'{args.dataset}.npy' if args.labels_dir else None),
-        residual_path=(work_dir/f'{args.dataset}_residuals.npy' if args.calculate_residuals else None),
+        site_info_path=(f'{args.site_info_dir}/{args.dataset}.npy' if args.site_info_dir else None),
+        site_residual_path=(work_dir/f'{args.dataset}.residuals.npy' if args.calculate_residuals else None),
     )
 
 if __name__ == '__main__':
