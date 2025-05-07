@@ -218,6 +218,7 @@ def save_descriptors(
                 npaa.append(descriptors.astype(np.float16))
             
             if site_info_path:
+                Path(site_info_path).parent.mkdir(exist_ok=True)
                 N = len(atomic_numbers)
                 dtype = np.dtype([
                         ('identifier', '<U30'),
@@ -279,8 +280,9 @@ def get_descriptors(batch, output, model, num_layers=-1, invariants_only=True):
 def main(args):
     device = 'cuda'
     work_dir = Path(args.work_dir)
-    print(work_dir)
+    print(f'{work_dir=}')
     models = list(work_dir.glob('*.model'))
+    print(models)
     assert len(models) == 1
     model = mace_mp(models[0], device=device, return_raw_model=True)
     model = run_e3nn_to_cueq(model)
@@ -288,7 +290,7 @@ def main(args):
     z_table = utils.AtomicNumberTable([int(z) for z in model.atomic_numbers])
 
     dataset_path = DATASETS[args.dataset]
-    if dataset_path[-3] == 'xyz':
+    if dataset_path[-3:] == 'xyz':
         ds = LazyIdentifiedXYZDataset(dataset_path, z_table=z_table, cutoff=float(model.r_max))
     else:
         ds = IdentifiedLMDBDataset(
@@ -299,7 +301,7 @@ def main(args):
 
     dataloader = torch_geometric.dataloader.DataLoader(
         dataset=ds,
-        batch_size=8,
+        batch_size=16,
         shuffle=False,
         drop_last=False
     )
@@ -316,3 +318,4 @@ def main(args):
 if __name__ == '__main__':
     args = parser.parse_args()
     main(args)
+    print('SUCCESS')
