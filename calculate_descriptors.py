@@ -245,9 +245,7 @@ def save_descriptors(
             if site_residual_path:
                 with NpyAppendArray(site_residual_path) as npaa:
                     npaa.append(residuals.astype('float16'))
-        break #1 batch
 
-                
             
 def get_descriptors(batch, output, model, num_layers=-1, invariants_only=True):
 
