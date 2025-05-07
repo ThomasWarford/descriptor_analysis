@@ -213,12 +213,17 @@ def save_descriptors(
                     )[:-1] # drop last as its empty
         
         residuals = torch_tools.to_numpy(output["energy"]) - torch_tools.to_numpy(batch.energy)
+        if site_info_path:
+            site_info_path = Path(site_info_path)
+            site_info_path.parent.mkdir(exist_ok=True)
+            if site_info_path.exists: 
+                print(f'{str(site_info_path)} already exists. Not saving site info.')
+                site_info_path = False
         for idx, (identifier, residual, atomic_numbers, descriptors) in enumerate(zip(batch.identifier, residuals, atomic_numbers_list, descriptors_list)):
             with NpyAppendArray(descriptor_path) as npaa:
                 npaa.append(descriptors.astype(np.float16))
             
             if site_info_path:
-                Path(site_info_path).parent.mkdir(exist_ok=True)
                 N = len(atomic_numbers)
                 dtype = np.dtype([
                         ('identifier', '<U30'),
@@ -240,6 +245,7 @@ def save_descriptors(
             if site_residual_path:
                 with NpyAppendArray(site_residual_path) as npaa:
                     npaa.append(residuals.astype('float16'))
+        break #1 batch
 
                 
             
@@ -314,7 +320,7 @@ def main(args):
     )
 
 if __name__ == '__main__':
-    print(f'Starting descriptor calculation in {args.work_dir} with {args.dataset} dataset.')
     args = parser.parse_args()
+    print(f'Starting descriptor calculation in {args.work_dir} with {args.dataset} dataset.')
     main(args)
     print('SUCCESS')
