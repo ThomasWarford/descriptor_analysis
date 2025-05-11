@@ -21,7 +21,7 @@ parser.add_argument("--work_dir", help="directory containing .model file. Direct
                     type=str, required=True)
 parser.add_argument("--site_info_dir", help="directory containing site information",
                     type=str, default=None, required=False,)
-parser.add_argument("--edge_info_dir", help="directory containing site information",
+parser.add_argument("--edge_info_dir", help="directory containing edge information",
                     type=str, default=None, required=False,)
 parser.add_argument("--dataset", help="choice of dataset",
                     choices=['mptrj', 'salex',], type=str, required=True)
@@ -222,6 +222,20 @@ def save_descriptors(
     ):
     torch_tools.set_default_dtype("float64")
 
+    assert not Path(descriptor_path).exists()
+
+    if site_info_path:
+        site_info_path = Path(site_info_path)
+        site_info_path.parent.mkdir(exist_ok=True)
+        if site_info_path.exists(): 
+            print(f'{str(site_info_path)} already exists. Not saving site info.')
+            site_info_path = None
+    if edge_info_path: 
+        edge_info_path = Path(edge_info_path)
+        edge_info_path.parent.mkdir(exist_ok=True)
+        if edge_info_path.exists():
+            print(f'{str(edge_info_path)} already exists. Not saving edge info.')
+            edge_info_path = None 
     for batch_idx, batch in enumerate(dataloader):
         batch.to(device)
         output = model(batch.to_dict(), compute_force=False)
@@ -236,12 +250,6 @@ def save_descriptors(
                     )[:-1] # drop last as its empty
         
         residuals = torch_tools.to_numpy(output["energy"]) - torch_tools.to_numpy(batch.energy)
-        if site_info_path:
-            site_info_path = Path(site_info_path)
-            site_info_path.parent.mkdir(exist_ok=True)
-            if site_info_path.exists: 
-                print(f'{str(site_info_path)} already exists. Not saving site info.')
-                site_info_path = False
         if edge_info_path:
             # Get a mask of oxygen atoms
             oxygen_mask = (atomic_numbers == 8)
@@ -289,7 +297,6 @@ def save_descriptors(
                 npaa.append(descriptors.astype(np.float16))
             
             if site_info_path:
-                print('saving site info?')
                 N = len(atomic_numbers)
                 dtype = np.dtype([
                         ('identifier', '<U30'),
@@ -311,7 +318,7 @@ def save_descriptors(
             if site_residual_path:
                 with NpyAppendArray(site_residual_path) as npaa:
                     npaa.append(residuals.astype('float16'))
-        if batch_idx == 20:
+        if batch_idx == 1000:
             break
 
             
