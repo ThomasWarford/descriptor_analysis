@@ -1,5 +1,6 @@
 import torch
 from torch.utils.data import DataLoader
+from typing import Tuple
 from pathlib import Path
 from mace.data import AtomicData, LMDBDataset, config_from_atoms, KeySpecification
 from mace.tools import torch_geometric, utils, torch_tools, DefaultKeys
@@ -12,12 +13,15 @@ import ase
 from npy_append_array import NpyAppendArray
 from mace.cli.convert_e3nn_cueq import run as run_e3nn_to_cueq
 import argparse
+torch.set_grad_enabled(False) # remove to calculate forces
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--work_dir", help="directory containing .model file. Directory name should correspond with model.",
                     type=str, required=True)
 parser.add_argument("--site_info_dir", help="directory containing site information",
+                    type=str, default=None, required=False,)
+parser.add_argument("--edge_info_dir", help="directory containing site information",
                     type=str, default=None, required=False,)
 parser.add_argument("--dataset", help="choice of dataset",
                     choices=['mptrj', 'salex',], type=str, required=True)
@@ -189,19 +193,38 @@ class LazyIdentifiedXYZDataset(torch.utils.data.IterableDataset):
         return atomic_data
 
 
+def get_edge_vectors_and_lengths(
+    positions: torch.Tensor,  # [n_nodes, 3]
+    edge_index: torch.Tensor,  # [2, n_edges]
+    shifts: torch.Tensor,  # [n_edges, 3]
+    normalize: bool = False,
+    eps: float = 1e-9,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    sender = edge_index[0]
+    receiver = edge_index[1]
+    vectors = positions[receiver] - positions[sender] + shifts  # [n_edges, 3]
+    lengths = torch.linalg.norm(vectors, dim=-1, keepdim=True)  # [n_edges, 1]
+    if normalize:
+        vectors_normed = vectors / (lengths + eps)
+        return vectors_normed, lengths
+
+    return vectors, lengths
+
+
 def save_descriptors(
     model: torch.nn.Module,
     dataloader: DataLoader,
     descriptor_path: Path,
     device: str,
     site_info_path=None,
-    site_residual_path=None
+    site_residual_path=None,
+    edge_info_path=None,
     ):
     torch_tools.set_default_dtype("float64")
 
     for batch_idx, batch in enumerate(dataloader):
         batch.to(device)
-        output = model(batch.to_dict(),)
+        output = model(batch.to_dict(), compute_force=False)
         descriptors_list = get_descriptors(batch, output, model)        
         atomic_numbers = torch.matmul(batch.node_attrs, torch.atleast_2d(model.atomic_numbers.double()).T)
 
@@ -219,11 +242,54 @@ def save_descriptors(
             if site_info_path.exists: 
                 print(f'{str(site_info_path)} already exists. Not saving site info.')
                 site_info_path = False
+        if edge_info_path:
+            # Get a mask of oxygen atoms
+            oxygen_mask = (atomic_numbers == 8)
+
+            # Get boolean mask for edges with at least one oxygen atom
+            edge_index = batch['edge_index']
+            src, dst = edge_index
+            edge_mask = (oxygen_mask[src] | oxygen_mask[dst]).flatten()
+            if edge_mask.sum() > 0:
+
+                # Apply the mask to get the subset of edge_index
+                oxygen_edge_index = edge_index[:, edge_mask]
+                oxygen_edge_graph_index = batch.batch[oxygen_edge_index[0]]
+                _, oxygen_lengths = get_edge_vectors_and_lengths(
+                    positions=batch["positions"],
+                    edge_index=batch["edge_index"],
+                    shifts=batch["shifts"],
+                    )
+                oxygen_lengths = oxygen_lengths[edge_mask].flatten()
+
+                other_species_atomic_numbers = (atomic_numbers[dst] * oxygen_mask[src] - atomic_numbers[src] * oxygen_mask[dst])[edge_mask].abs().flatten()
+
+                dtype = np.dtype([
+                    ('dataset_index', np.uint32),
+                    ('edge_index_src', np.uint8),
+                    ('edge_index_dst', np.uint8),
+                    ('atomic_numbers', np.uint8),
+                    ('oxygen_distance', np.float16),
+                    ])
+                edge_info = np.empty(len(oxygen_lengths), dtype=dtype)
+                edge_info['dataset_index'] = batch_idx*dataloader.batch_size+oxygen_edge_graph_index.cpu().numpy()
+                idx_offset = torch.cumsum(torch.bincount(batch.batch), dim=0)
+                idx_offset = torch.cat((torch.zeros(1, dtype=int, device=device), idx_offset))
+                idx_mapping = torch.arange(len(batch.batch), device=device) - idx_offset[batch.batch]
+                edge_info['edge_index_src'] = idx_mapping[oxygen_edge_index[0]].cpu().numpy()
+                edge_info['edge_index_dst'] = idx_mapping[oxygen_edge_index[1]].cpu().numpy()
+                edge_info['atomic_numbers'] = other_species_atomic_numbers.cpu().numpy() # could be removed later after refactor
+                edge_info['oxygen_distance'] = oxygen_lengths.cpu().numpy()
+
+                with NpyAppendArray(edge_info_path) as npaa:
+                        npaa.append(edge_info)
+
         for idx, (identifier, residual, atomic_numbers, descriptors) in enumerate(zip(batch.identifier, residuals, atomic_numbers_list, descriptors_list)):
             with NpyAppendArray(descriptor_path) as npaa:
                 npaa.append(descriptors.astype(np.float16))
             
             if site_info_path:
+                print('saving site info?')
                 N = len(atomic_numbers)
                 dtype = np.dtype([
                         ('identifier', '<U30'),
@@ -241,10 +307,12 @@ def save_descriptors(
 
                 with NpyAppendArray(site_info_path) as npaa:
                     npaa.append(config_info)
-            
+
             if site_residual_path:
                 with NpyAppendArray(site_residual_path) as npaa:
                     npaa.append(residuals.astype('float16'))
+        if batch_idx == 20:
+            break
 
             
 def get_descriptors(batch, output, model, num_layers=-1, invariants_only=True):
@@ -315,6 +383,7 @@ def main(args):
         device=device,
         site_info_path=(f'{args.site_info_dir}/{args.dataset}.npy' if args.site_info_dir else None),
         site_residual_path=(work_dir/f'{args.dataset}.residuals.npy' if args.calculate_residuals else None),
+        edge_info_path = (f'{args.edge_info_dir}/{args.dataset}.npy' if args.edge_info_dir else None),
     )
 
 if __name__ == '__main__':
@@ -322,3 +391,6 @@ if __name__ == '__main__':
     print(f'Starting descriptor calculation in {args.work_dir} with {args.dataset} dataset.')
     main(args)
     print('SUCCESS')
+
+# TODO: could this be built out to calculate other stats i.e. mean X-O distance - for later!
+# also, make saving of data more memory efficient!
