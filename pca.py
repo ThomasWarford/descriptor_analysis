@@ -3,6 +3,7 @@ import numpy as np
 import faiss # pca for many vectors
 import argparse
 import matplotlib.pyplot as plt
+np.random.seed(42)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("work_dir", help="Directory containing .descriptor.npy files.",
@@ -40,12 +41,16 @@ def main(args):
     for descriptors in dataset_to_descriptors.values():
         temp[start_idx:start_idx+descriptors.shape[0]] = descriptors
         start_idx += descriptors.shape[0]
-    
     pca_matrix = faiss.PCAMatrix(temp.shape[1], 8)
-    pca_matrix.train(temp)
+    print('training')
+    # prevent oom errors by sampling - I believe faiss does this anyways https://github.com/facebookresearch/faiss/issues/4262
+    subset_size = 100_000 
+    indices = np.random.choice(temp.shape[0], size=min(subset_size, temp.shape[0]), replace=False)
+    pca_matrix.train(temp[indices])
     assert pca_matrix.is_trained
+    print('training complete')
     faiss.write_VectorTransform(pca_matrix, f"{str(work_dir)}/pca.pca") # faiss c++ code doesn't like pathlib.Path
-    
+    print('saved pca matrix')
     fig_s, ax_s = plt.subplots(2, sharex=True, sharey=True)
     fig_c, ax_c = plt.subplots()
     # fig, ax = plt.subplots()
