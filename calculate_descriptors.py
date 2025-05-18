@@ -265,10 +265,9 @@ def save_descriptors(
                 oxygen_edge_graph_index = batch.batch[oxygen_edge_index[0]]
                 _, oxygen_lengths = get_edge_vectors_and_lengths(
                     positions=batch["positions"],
-                    edge_index=batch["edge_index"],
-                    shifts=batch["shifts"],
+                    edge_index=oxygen_edge_index,
+                    shifts=batch["shifts"][:, edge_mask],
                     )
-                oxygen_lengths = oxygen_lengths[edge_mask].flatten()
 
                 other_species_atomic_numbers = (atomic_numbers[dst] * oxygen_mask[src] - atomic_numbers[src] * oxygen_mask[dst])[edge_mask].abs().flatten()
 
