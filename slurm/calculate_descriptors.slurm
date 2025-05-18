@@ -25,4 +25,4 @@ python ../calculate_descriptors.py \
     --site_info_dir="../site_info" \
     --dataset=$DATASET \
     --calculate_residuals=True \
-    --site_info_dir="../edge_info" \
+    --edge_info_dir="../edge_info" \
