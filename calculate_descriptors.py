@@ -266,7 +266,7 @@ def save_descriptors(
                 _, oxygen_lengths = get_edge_vectors_and_lengths(
                     positions=batch["positions"],
                     edge_index=oxygen_edge_index,
-                    shifts=batch["shifts"][:, edge_mask],
+                    shifts=batch["shifts"][edge_mask],
                     )
 
                 other_species_atomic_numbers = (atomic_numbers[dst] * oxygen_mask[src] - atomic_numbers[src] * oxygen_mask[dst])[edge_mask].abs().flatten()
@@ -286,7 +286,7 @@ def save_descriptors(
                 edge_info['edge_index_src'] = idx_mapping[oxygen_edge_index[0]].cpu().numpy()
                 edge_info['edge_index_dst'] = idx_mapping[oxygen_edge_index[1]].cpu().numpy()
                 edge_info['atomic_numbers'] = other_species_atomic_numbers.cpu().numpy() # could be removed later after refactor
-                edge_info['oxygen_distance'] = oxygen_lengths.cpu().numpy()
+                edge_info['oxygen_distance'] = oxygen_lengths.view(-1).cpu().numpy()
 
                 with NpyAppendArray(edge_info_path) as npaa:
                         npaa.append(edge_info)
