@@ -60,6 +60,7 @@ def plot_descriptors(dataset_name, descriptors, pca_matrix, savefig_path=None, a
 
     if savefig_path:
         plt.savefig(savefig_path)
+        plt.close()
     return ax
 
 def main(args):
@@ -78,9 +79,10 @@ def main(args):
     sampled_descriptors = sample_from_mmap_chunks(descriptor_arrays=descriptors_list, global_indices=indices)
     
     print('PCA training')
-    pca_matrix = faiss.PCAMatrix(sampled_descriptors.shape[1], 8)
+    pca_matrix = faiss.PCAMatrix(sampled_descriptors.shape[1], 3)
     pca_matrix.train(sampled_descriptors)
     assert pca_matrix.is_trained
+    del sampled_descriptors
     print('training complete')
     faiss.write_VectorTransform(pca_matrix, f"{str(work_dir)}/pca.pca") # faiss c++ code doesn't like pathlib.Path
     print('saved pca matrix')
