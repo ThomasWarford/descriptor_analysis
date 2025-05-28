@@ -183,7 +183,7 @@ class LazyIdentifiedXYZDataset(torch.utils.data.IterableDataset):
         try:
             atomic_data.identifier = atoms.info['mp_id'] + '-' + str(atoms.info['calc_id']) + '-' + str(atoms.info['ionic_step'])
         except:
-            atomic_data.identifier = self.current_idx
+            atomic_data.identifier = str(self.current_idx) # I think the error is because the final batch(es) are isolated atoms so the integer identifiers are moved to gpu.
             
         # Add chemical formula for convenience
         atomic_data.chemical_formula = atoms.get_chemical_formula()
